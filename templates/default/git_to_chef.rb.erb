@@ -1,0 +1,253 @@
+#!/usr/bin/ruby
+require 'date'
+require 'fileutils'
+################################################################################
+# This script is maintained by Chef.  Any updates will be overwritten.
+#
+# Usage:  This script will compare the Chef cookbooks in Git now to the previous run.  
+# If there are new and/or updated cookbooks, it'll either log it or upload them based
+# on the arg you provide.  If you run this as an upload it will upload all data bags
+# and roles no matter the status of cookbooks.
+ 
+# Monitoring:  Errors are reported as, wait for it, error.  If run as a report
+# and there are new/updated cookbooks, it'll be logged as warning.
+################################################################################
+emailee = "<%= @emailee %>"
+whoibe = ENV['USER']
+scratch_file = "<%= @scratch_dir %>/git_to_chef.#{whoibe}"
+################################################################################
+# If reporting to a Graphite server
+graphite_server = "<%= @graphite_server %>"
+carbon_port = "<%= @carbon_port %>"
+################################################################################
+# Determine options[:function]
+require 'optparse'
+options = {}
+optparse = OptionParser.new do |opts|
+        opts.banner = "Usage: #{$0} [OPTIONS]"
+ 
+        opts.on('-f', '--function FUNCTION', 'report or upload') do |function|
+                options[:function] = function.downcase
+        end
+ 
+        opts.on('-c', '--chef_repo DIRECTORY', 'Path of the Chef repo to use') do |chefrepo|
+                options[:chefrepo] = chefrepo
+        end
+ 
+        opts.on('-e', '--environment ENVIRONMENT', 'ENVIRONMENT to update with the versions of the cookbooks being uploaded') do |env|
+                options[:env] = env.downcase
+        end
+ 
+        opts.on('-o', '--force', 'Update ENVIRONMENT but don\'t upload cookbooks that are already frozen') do |force|
+                options[:force] = "true"
+        end
+ 
+        opts.on('-r', '--really', 'Required to push to production') do |really|
+                options[:really] = "true"
+        end
+ 
+        opts.on('-h', '--help', 'Display this message') do
+                puts opts
+        end
+end
+optparse.parse!
+ 
+unless options[:function] && options[:chefrepo] && options[:env]
+        puts optparse.help
+        exit
+end
+################################################################################
+# Delete previous scratch files
+Dir.glob("#{scratch_file}.*").each { |f| File.delete(f) }
+################################################################################
+if "#{options[:env]}" == "production"
+	if "#{options[:function]}" == "upload"
+		if "#{options[:really]}" != "true"
+			puts
+			puts "--really flag required to push to production"
+			puts
+        		puts optparse.help
+        		exit
+		end
+	end
+end
+################################################################################
+# Pull from GitHub
+git_branch = `cd #{options[:chefrepo]} && git branch | head -1 | cut -c3-99`
+puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Pulling from Git branch #{git_branch}"
+`cd #{options[:chefrepo]} && git pull`
+if $? != 0
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Pulling from GitHub FAILED"
+	exit 1
+end
+################################################################################
+puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Generating hash of cookbooks in #{options[:chefrepo]}"
+versions_git_now = Hash.new
+delim_count = "#{options[:chefrepo]}".count('/')+2
+Dir["#{options[:chefrepo]}/cookbooks/**/metadata.rb"].each do |path|
+	File.open( path ) do |f|
+		f.grep( /^version/ ) do |line|
+			cookbook = path.split('/')["#{delim_count}".to_i]
+			version = line.split('"')[1]
+			versions_git_now["#{cookbook}"] = "#{version}"
+		end
+	end
+end
+versions_git_now = versions_git_now.sort_by { |cookbook, version| cookbook }
+################################################################################
+puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Generating hash of cookbooks currently specified for the #{options[:env]} environment"
+versions_chef_now = Hash.new
+if `knife environment show #{options[:env]} 2> /dev/null | wc -l`.to_i > 1 
+	`knife environment show "#{options[:env]}" | grep -e "^  "`.each do |line|
+		line = line.strip
+		cookbook = line.split(' ')[0]
+		cookbook = line.split(':')[0]
+		version = line.split(' ')[1]
+		versions_chef_now["#{cookbook}"] = "#{version}"
+	end
+	versions_chef_now = versions_chef_now.sort_by { |cookbook, version| cookbook }
+else
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Environment #{options[:env]} DOES NOT EXIST"
+	versions_chef_now = ""
+end
+################################################################################
+puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Determining if there are differences"
+if versions_chef_now == ""
+	difference = versions_git_now
+else
+	difference = versions_git_now - versions_chef_now
+end
+################################################################################
+# If there are new and/or updated cookbooks...
+if "#{difference}" == ""
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: No differences between what's in Git vs. Chef"
+elsif "#{options[:function]}" == "report"
+	# There are, but we'll just report them (Hopefully Nagios or the like is monitoring for it)
+	diff_line = ""
+	difference.each do | cookbook,version |
+		if `knife cookbook show #{cookbook} #{version} | grep frozen | grep -c true`.to_i == 0
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Need to be uploaded/frozen/set in env:	#{cookbook}-#{version}"
+		else
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ALREADY UPLOADED/FROZEN but need to be set in env ('--force' required):	#{cookbook}-#{version}"
+		end
+	end
+elsif "#{options[:function]}" == "upload"
+	difference.each do | cookbook,version |
+		if `knife cookbook show #{cookbook} #{version} | grep frozen | grep -c true`.to_i == 0
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Uploading cookbook #{cookbook} #{version}"
+			`cd && knife cookbook upload -o #{options[:chefrepo]}/cookbooks #{cookbook}`
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Freezing cookbook #{cookbook} #{version}"
+			`cd && knife cookbook upload -o #{options[:chefrepo]}/cookbooks --freeze #{cookbook}`
+			if $? != 0
+				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading and/or freezing cookbook #{cookbook} #{version}"
+				exit 1
+			end
+
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Verifying cookbook upload"
+			ucookbook = `cd && knife cookbook show #{cookbook}`
+			uversion = ucookbook.squeeze(" ").split(' ')[1]
+			if "#{version}" != "#{uversion}"
+				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading cookbook #{cookbook} #{version}"
+				exit 1
+			end
+		elsif "#{options[:force]}" == "true"
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Skipping (already uploaded/frozen):	#{cookbook}-#{version}"
+		else
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ALREADY UPLOADED/FROZEN but need to be set in env ('--force' required):	#{cookbook}-#{version}"
+			exit 1
+		end
+	end
+
+	# Create an environment file using the cookbook versions from Git
+	env_file = "#{scratch_file}.env-#{options[:env]}.rb"
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Creating #{options[:env]} environment file #{env_file}"
+	File.open("#{env_file}", 'w') do |f|
+		f.puts %Q{name "#{options[:env]}"}
+		f.puts %Q{ }
+		f.puts %Q{description "#{options[:env]} Environment"}
+		f.puts %Q{}
+		f.puts %Q{cookbook_versions\(\{}
+	end
+	versions_git_now.each do | cookbook,version |
+		File.open("#{env_file}", 'a') {|f| f.puts(" \"#{cookbook}\"\ \=\>\ \"#{version}\"\,")}
+	end
+	File.open("#{env_file}", 'a') {|f| f.puts("})")}
+
+	# Create an archive of the current environment file
+	`knife environment show #{options[:env]} > #{scratch_file}.env-#{options[:env]}.archive 2> /dev/null`
+
+	# Upload the new environment file
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Uploading #{options[:env]} environment file"
+	`cd && knife environment from file #{env_file}`
+	if $? != 0
+		puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading #{options[:env]} environment file"
+		exit 1
+	else
+		if "#{graphite_server}" != ""
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Graphing this upload on Graphite"
+			t = Time.now.to_i
+			`echo "app.chef.upload.environment.#{options[:env]} 1 #{t}" | nc #{graphite_server} #{carbon_port}`
+		end
+	end
+
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Emailing our notification"
+	difference.each do |cookbook,version|
+		if "#{diff_line}" == ""
+			diff_line = "#{cookbook}-#{version}"
+		else
+			diff_line = "#{diff_line}, #{cookbook}-#{version}"
+		end
+	end
+	past_env = `cat #{scratch_file}.env-#{options[:env]}.archive`
+	require 'net/smtp'
+	message = <<MESSAGE_END
+From: <#{whoibe}@spanning.com>
+To: <#{emailee}>
+Subject: git_to_chef - New cookbooks uploaded and/or #{options[:env]} environment updated
+
+The #{options[:env]} environment was updated.
+
+The following cookbooks were uploaded and/or set for the #{options[:env]} environment:
+#{diff_line}
+
+All databags and roles are being updated as well.
+
+The following WAS the contents of the #{options[:env]} environment:
+#{past_env}
+
+MESSAGE_END
+
+	Net::SMTP.start('localhost') do |smtp|
+		smtp.send_message message, "#{whoibe}@spanning.com", 
+						"#{emailee}"
+	end
+end
+
+# If we're called to upload, we always upload data bags and roles
+if "#{options[:function]}" == "upload"
+	########################################################################
+	# Upload databags
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Uploading databags"
+	Dir["#{options[:chefrepo]}/data_bags/*"].sort.each do |path|
+		db = File.basename( path )
+		Dir["#{path}/*"].sort.each do |dbi|
+			`knife data bag from file #{db} #{dbi}`
+			if $? != 0
+				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading databag item #{db} #{dbi}"
+				exit 1
+			end
+		end
+	end
+	########################################################################
+	# Upload roles
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Uploading roles"
+	Dir["#{options[:chefrepo]}/roles/*"].sort.each do |path|
+		role = File.basename( path )
+		`knife role from file #{path}`
+		if $? != 0
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading role #{role}"
+			exit 1
+		end
+	end
+end
+puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: All clear"
