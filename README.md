@@ -1,9 +1,11 @@
 ## Description
 
-git_to_chef will compare the Chef cookbooks in Git to those in Chef.  If there
-are new and/or updated cookbooks in Git, it'll either log it or upload and
-freeze them based on the how it's called.  If you run this as an upload it will
-upload all data bags and roles no matter the status of cookbooks.
+git_to_chef will compare the Chef cookbooks in Git to those in a Chef
+Environment.  If there are new and/or updated cookbooks in Git, it'll either log
+it or upload/freeze the affected cookbooks, update the stated environment,
+upload databags, upload roles then send an email notification.  Note, if you run
+as an upload it will upload all data bags and roles no matter the status of
+cookbooks.
 
 ## Longer Description
 
@@ -14,7 +16,7 @@ The Chef workflow that's currently working for us is:
   * Send a Pull Request and collaborate
   * Edit/test more, if needed
   * Merge the Pull Request to Master
-  * Manually run git_to_push as an upload that'll:
+  * Manually run git_to_push as an upload that will:
     * Pull from Git
     * Upload new(er) cookbooks
     * Freeze new(er) cookbooks
