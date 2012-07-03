@@ -4,7 +4,7 @@ git_to_chef will compare the Chef cookbooks in Git to those in a Chef
 Environment.  If there are new and/or updated cookbooks in Git, it'll either log
 it or upload/freeze the affected cookbooks, update the stated environment,
 upload databags, upload roles then send an email notification.  Note, if you run
-as an upload it will upload all data bags and roles no matter the status of
+as an upload, it will upload all data bags and roles no matter the status of
 cookbooks.
 
 ## Longer Description
