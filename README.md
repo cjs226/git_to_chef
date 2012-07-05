@@ -1,6 +1,6 @@
 ## Description
 
-git_to_chef will compare the cookbooks in Git to those in a Chef Environment.
+git_to_chef will compare the cookbooks in Git to those in a Chef Environment (i.e. Chef Server only).
 If there are new and/or updated cookbooks in Git, it'll either log it or
 upload/freeze the affected cookbooks, update the stated environment, upload
 databags, upload roles then send an email notification.  Note, if you run as an
