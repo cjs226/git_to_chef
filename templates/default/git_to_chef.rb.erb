@@ -77,7 +77,7 @@ git_branch = `cd #{options[:chefrepo]} && git branch | head -1 | cut -c3-99`
 puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Pulling from Git branch #{git_branch}"
 `cd #{options[:chefrepo]} && git pull`
 if $? != 0
-	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Pulling from GitHub FAILED"
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to pull from GitHub"
 	exit 1
 end
 ################################################################################
@@ -107,7 +107,7 @@ if `knife environment show #{options[:env]} 2> /dev/null | wc -l`.to_i > 1
 	end
 	versions_chef_now = versions_chef_now.sort_by { |cookbook, version| cookbook }
 else
-	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Environment #{options[:env]} DOES NOT EXIST"
+	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Environment #{options[:env]} DOES NOT EXIST"
 	versions_chef_now = ""
 end
 ################################################################################
@@ -139,7 +139,7 @@ elsif "#{options[:function]}" == "upload"
 			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Freezing cookbook #{cookbook} #{version}"
 			`cd && knife cookbook upload -o #{options[:chefrepo]}/cookbooks --freeze #{cookbook}`
 			if $? != 0
-				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading and/or freezing cookbook #{cookbook} #{version}"
+				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to upload and/or freeze cookbook #{cookbook} #{version}"
 				exit 1
 			end
 
@@ -147,7 +147,7 @@ elsif "#{options[:function]}" == "upload"
 			ucookbook = `cd && knife cookbook show #{cookbook}`
 			uversion = ucookbook.squeeze(" ").split(' ')[1]
 			if "#{version}" != "#{uversion}"
-				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading cookbook #{cookbook} #{version}"
+				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to upload cookbook #{cookbook} #{version}"
 				exit 1
 			end
 		elsif "#{options[:force]}" == "true"
@@ -180,7 +180,7 @@ elsif "#{options[:function]}" == "upload"
 	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Uploading #{options[:env]} environment file"
 	`cd && knife environment from file #{env_file}`
 	if $? != 0
-		puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading #{options[:env]} environment file"
+		puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to upload #{options[:env]} environment file"
 		exit 1
 	else
 		if "#{graphite_server}" != ""
@@ -233,7 +233,7 @@ if "#{options[:function]}" == "upload"
 		Dir["#{path}/*"].sort.each do |dbi|
 			`knife data bag from file #{db} #{dbi}`
 			if $? != 0
-				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading databag item #{db} #{dbi}"
+				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to upload databag item #{db} #{dbi}"
 				exit 1
 			end
 		end
@@ -245,7 +245,7 @@ if "#{options[:function]}" == "upload"
 		role = File.basename( path )
 		`knife role from file #{path}`
 		if $? != 0
-			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: ERROR uploading role #{role}"
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to upload role #{role}"
 			exit 1
 		end
 	end
