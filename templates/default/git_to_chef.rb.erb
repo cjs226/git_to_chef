@@ -201,7 +201,7 @@ elsif "#{options[:function]}" == "upload"
 	past_env = `cat #{scratch_file}.env-#{options[:env]}.archive`
 	require 'net/smtp'
 	message = <<MESSAGE_END
-From: <#{whoibe}@spanning.com>
+From: <#{whoibe}>
 To: <#{emailee}>
 Subject: git_to_chef - New cookbooks uploaded and/or #{options[:env]} environment updated
 
@@ -218,7 +218,7 @@ The following WAS the contents of the #{options[:env]} environment:
 MESSAGE_END
 
 	Net::SMTP.start('localhost') do |smtp|
-		smtp.send_message message, "#{whoibe}@spanning.com", 
+		smtp.send_message message, "#{whoibe}", 
 						"#{emailee}"
 	end
 end
