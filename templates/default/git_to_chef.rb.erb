@@ -231,9 +231,10 @@ if "#{options[:function]}" == "upload"
 	Dir["#{options[:chefrepo]}/data_bags/*"].sort.each do |path|
 		db = File.basename( path )
 		Dir["#{path}/*"].sort.each do |dbi|
+			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Uploading databag item #{dbi}"
 			`knife data bag from file #{db} #{dbi}`
 			if $? != 0
-				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to upload databag item #{db} #{dbi}"
+				puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to upload databag item #{dbi}"
 				exit 1
 			end
 		end
@@ -243,6 +244,7 @@ if "#{options[:function]}" == "upload"
 	puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Uploading roles"
 	Dir["#{options[:chefrepo]}/roles/*"].sort.each do |path|
 		role = File.basename( path )
+		puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Uploading role #{role}"
 		`knife role from file #{path}`
 		if $? != 0
 			puts Time.now.strftime("%b %d %H:%M:%S") + " <%= @hostname %> git_to_chef: Error: Unable to upload role #{role}"
